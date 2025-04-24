@@ -13,7 +13,7 @@ from io import BytesIO
 # Suppress deprecation warnings
 warnings.filterwarnings("ignore")
 # Constants
-MODEL_PATH = "C:\Users\USER\Desktop\MuseSnap\runs\classify\train\weights\best.pt"
+MODEL_PATH = r"C:\Users\USER\Desktop\MuseSnap\runs\classify\train\weights\best.pt"
 DESCRIPTIONS_PATH = "Data.json"
 
 def initialize_session_state():
