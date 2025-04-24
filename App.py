@@ -1,4 +1,3 @@
-import os
 import warnings
 import base64
 import random
@@ -10,9 +9,9 @@ from ultralytics import YOLO
 from PIL import Image
 from io import BytesIO
 
+
 # Suppress deprecation warnings
 warnings.filterwarnings("ignore")
-
 # Constants
 MODEL_PATH = "runs/classify/train/weights/best.pt"
 DESCRIPTIONS_PATH = "Data.json"
@@ -44,18 +43,8 @@ def load_model_and_descriptions():
     """Load the YOLO model and class descriptions, caching the result"""
     if st.session_state.model is None or st.session_state.class_descriptions is None:
         with st.spinner('Loading model and descriptions...'):
-            # Check if the model file exists
-            if not os.path.exists(MODEL_PATH):
-                st.error(f"Model file not found at {MODEL_PATH}. Please check the path.")
-                return
-            
             model = YOLO(MODEL_PATH)
-
             # Load class descriptions from JSON
-            if not os.path.exists(DESCRIPTIONS_PATH):
-                st.error(f"Descriptions file not found at {DESCRIPTIONS_PATH}. Please check the path.")
-                return
-
             with open(DESCRIPTIONS_PATH, 'r', encoding='utf-8') as f:
                 class_descriptions = json.load(f)
             st.session_state.model = model
@@ -160,13 +149,33 @@ def display_prediction_results(image, predicted_class, confidence, description):
             st.markdown(share_button, unsafe_allow_html=True)
 
         # Add hover effects with CSS
-        st.markdown(""" 
+        st.markdown("""
             <style>
                 button:hover {
                     opacity: 0.8;
                     transition: opacity 0.3s;
                 }
             </style>
+        """, unsafe_allow_html=True)
+def add_footer():
+    """
+    Add a footer to the Streamlit app.
+    """
+    st.markdown("""
+        <style>
+        .footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            text-align: center;
+            padding: 10px;
+            font-size:12px;
+        }
+        </style>
+        <div class="footer">
+            Developed by Farida Adham 😎
+        </div>
         """, unsafe_allow_html=True)
 
 def culture_detection_tab():
@@ -214,30 +223,183 @@ def culture_detection_tab():
 
             # Display results
             display_prediction_results(image, predicted_class, confidence, description)
+        else:
+            st.info("Please capture an image to get started.")
 
-def add_footer():
-    """
-    Add a footer to the Streamlit app.
-    """
-    st.markdown("""
-        <style>
-        .footer {
-            position: fixed;
-            left: 0;
-            bottom: 0;
-            width: 100%;
-            text-align: center;
-            padding: 10px;
-            font-size:12px;
-        }
-        </style>
-        <div class="footer">
-            Developed by Farida Adham 😎
+def game_tab():
+    """Content for the Artifacts hunting tab."""
+    st.header("Hunt the Artifacts Game 🎯")
+    st.markdown("Try to capture an image of the given art piece!")
+
+    # Display game stats
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Level", st.session_state.game_level)
+    with col2: 
+        st.metric("Score", st.session_state.game_score)
+
+    # Get the list of class names from the model
+    if st.session_state.model_classes is None:
+        st.session_state.model_classes = list(st.session_state.model.names.values())
+
+    # Randomly select a target class if not already set
+    if st.session_state.target_class is None:
+        st.session_state.target_class = random.choice(st.session_state.model_classes)
+
+    st.info(f"🎯 Your target: **{st.session_state.target_class}**")
+
+    # Button to get a new target class
+    if st.button("🎯 New Target"):
+        st.session_state.target_class = random.choice(st.session_state.model_classes)
+
+    # Capture image from camera
+    image_file = st.camera_input("📸 Capture the target art piece")
+    if image_file:
+        with st.spinner("Checking your capture..."):
+            temp_image_path = "temp.jpg"
+            with open(temp_image_path, "wb") as f:
+                f.write(image_file.getbuffer())
+
+            image, predicted_class, confidence, description = predict_image(temp_image_path)
+
+            # Display results
+            st.image(image, caption=f"Predicted: {predicted_class} ({confidence*100:.2f}%)", use_container_width =True)
+
+        # Check if the predicted class matches the target class
+        if predicted_class == st.session_state.target_class:
+            st.success(f"🎉 Congratulations! You captured the correct art piece!")
+            st.balloons()
+            st.session_state.game_score += 1
+            if st.session_state.game_score % 3 == 0:  # Level up every 3 correct answers
+                    st.session_state.game_level += 1
+                    st.session_state.game_score = 0 # Reset score for new level
+            st.session_state.target_class = None  # Reset target for next round
+        else:
+            st.error(f"❌ Oops! That's **{predicted_class}**. Try again!")
+
+def quiz_tab():
+    """Content for the Quiz tab."""
+    st.header("📝 Art Recognition Quiz")
+    st.markdown("Test your knowledge by matching the description to the correct art piece!")
+
+    # Initialize session state variables for the quiz
+    if 'quiz_score' not in st.session_state:
+        st.session_state.quiz_score = 0
+    if 'quiz_question' not in st.session_state:
+        st.session_state.quiz_question = None
+    if 'quiz_options' not in st.session_state:
+        st.session_state.quiz_options = None
+    if 'quiz_correct_answer' not in st.session_state:
+        st.session_state.quiz_correct_answer = None
+    if 'quiz_feedback' not in st.session_state:
+        st.session_state.quiz_feedback = None
+
+    # Get the list of class names from the model
+    if st.session_state.model_classes is None:
+        st.session_state.model_classes = list(st.session_state.model.names.values())
+
+    # Initialize a new quiz question if needed
+    if st.session_state.quiz_question is None:
+        # Randomly select a class
+        correct_class = random.choice(st.session_state.model_classes)
+        correct_description = st.session_state.class_descriptions.get(correct_class, "No description available.")
+
+        # Generate multiple-choice options
+        other_classes = [cls for cls in st.session_state.model_classes if cls != correct_class]
+        options = random.sample(other_classes, min(3, len(other_classes)))
+        options.append(correct_class)
+        random.shuffle(options)
+
+        # Store in session state
+        st.session_state.quiz_question = correct_description
+        st.session_state.quiz_options = options
+        st.session_state.quiz_correct_answer = correct_class
+        st.session_state.quiz_feedback = None  # Reset feedback
+
+    # Display the description
+    st.markdown(f"### Description:")
+    description_html = f'''
+        <div style="
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 5px solid #6c6ce9;
+            ">
+            <p style="font-size: 18px; line-height: 1.5; color: #333333; font-weight: bold;">
+                {st.session_state.quiz_question}
+            </p>
         </div>
-        """, unsafe_allow_html=True)
+    '''
+    st.markdown(description_html, unsafe_allow_html=True)
 
-# The rest of the tabs remain unchanged...
+    # Display options as a radio button list
+    user_answer = st.radio("Select the art piece that matches the above description:", st.session_state.quiz_options)
 
+    # Check the user's answer when they click the "Submit Answer" button
+    if st.button("Submit Answer"):
+        if user_answer == st.session_state.quiz_correct_answer:
+            st.success("🎉 Correct! Great job!")
+            st.session_state.quiz_score += 1
+        else:
+            st.error(f"❌ Incorrect. The correct answer was **{st.session_state.quiz_correct_answer}**.")
+        st.session_state.quiz_feedback = True
+
+    if st.session_state.quiz_feedback:
+        st.write(f"**Your Score:** {st.session_state.quiz_score}")
+        if st.button("Next Question"):
+            # Reset quiz question to generate a new one
+            st.session_state.quiz_question = None
+            st.session_state.quiz_options = None
+            st.session_state.quiz_correct_answer = None
+            st.session_state.quiz_feedback = None
+    else:
+        st.write(f"**Your Score:** {st.session_state.quiz_score}")
+
+def about_tab():
+    """Content for the About tab with minimal CSS."""
+    # App Introduction
+    st.title("📷 MuseSnap")
+    
+    st.info("""
+        Welcome to an innovative Website that bridges technology and cultural heritage! 
+        Our website uses advanced AI to help you explore and learn about various cultural artifacts and artworks.
+    """)
+
+    # Key Features Section
+    st.header('✨ Key Features')
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.success("🔍 **Image Recognition**\n- Advanced AI-powered detection of cultural artifacts")
+        st.success("📊 **Smart Analysis**\n- Accurate predictions with confidence scores")
+        st.success("📱 **Camera Integration**\n- Real-time detection using your device's camera")
+    
+    with col2:
+        st.success("🎮 **Interactive Learning**\n- Learn through games and quizzes")
+        st.success("💾 **Save & Share**\n- Download results and share on social media")
+        st.success("📚 **Rich Information**\n- Detailed descriptions of each artifact")
+
+    # How It Works Section
+    st.header('🔧 How It Works')
+    
+    st.info("""
+        1. Upload an image or use your camera to capture an art piece
+        2. Our AI model analyzes the image using YOLO technology
+        3. Receive instant identification with confidence scores
+        4. Learn about the artifact through fun and lighthearted detailed descriptions
+        5. Save or share your discoveries
+    """)
+
+    # Additional Information
+    st.header('📌 Additional Information')
+    st.success("""
+        This application uses YOLO (You Only Look Once) technology to provide:
+        - Real-time object detection
+        - High accuracy predictions
+        - Fast processing speed
+        - User-friendly interface
+    """)
 def main():
     """Main function to run the Streamlit app."""
     st.set_page_config(
@@ -262,6 +424,7 @@ def main():
         </style>
         <div class="header">MuseSnap📷</div>
         """, unsafe_allow_html=True)
+
 
     # Load the model and descriptions
     load_model_and_descriptions()
