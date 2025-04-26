@@ -8,6 +8,9 @@ import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
 from io import BytesIO
+import os
+os.system('pip install opencv-python')
+import cv2
 
 
 # Suppress deprecation warnings
